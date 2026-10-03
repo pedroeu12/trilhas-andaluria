@@ -81,6 +81,15 @@ code{background:#0e090b;border:1px solid var(--borda);border-radius:6px;padding:
     </div>
   </div>
   <div class="cartao">
+    <h2>Corte do loop</h2>
+    <p>Pula o começo e o fim de cada faixa, onde a música costuma estar baixa. Em segundos; use 0 para não cortar. Para uma cena específica, acrescente um terceiro campo: <code>Nome | música | 10-20</code> (início-fim).</p>
+    <div class="linha">
+      <label style="flex:1">Cortar do início<input id="corteIni" type="number" min="0" max="120" inputmode="numeric"></label>
+      <label style="flex:1">Cortar do final<input id="corteFim" type="number" min="0" max="120" inputmode="numeric"></label>
+    </div>
+    <div class="linha"><button class="primario" id="salvarCorte">Salvar corte</button></div>
+  </div>
+  <div class="cartao">
     <h2>Conta</h2>
     <div class="linha">
       <button class="mini" id="sair">Desconectar do Spotify</button>
@@ -99,6 +108,7 @@ code{background:#0e090b;border:1px solid var(--borda);border-radius:6px;padding:
 
 <script>
 "use strict";
+const CORTE_PADRAO = { ini: 6, fim: 12 };
 const ID_PADRAO = "e2c8b49c706041f7a4744a9493d65728";
 const PADRAO = [
   ["Início: a praça", "Bloodborne Omen"],
@@ -169,13 +179,14 @@ function uriDe(musica) {
   return m ? "spotify:track:" + m[1] : null;
 }
 async function resolver(musica) {
-  const direto = uriDe(musica); if (direto) return { uri: direto, titulo: "" };
   const cache = guarda.ler("cache", {});
-  if (cache[musica]) return cache[musica];
-  const j = await api("GET", "/search?type=track&limit=1&q=" + encodeURIComponent(musica));
-  const f = j && j.tracks && j.tracks.items && j.tracks.items[0];
+  if (cache[musica] && cache[musica].dur) return cache[musica];
+  const direto = uriDe(musica) || (cache[musica] && cache[musica].uri);
+  let f;
+  if (direto) f = await api("GET", "/tracks/" + direto.split(":")[2]);
+  else { const j = await api("GET", "/search?type=track&limit=1&q=" + encodeURIComponent(musica)); f = j && j.tracks && j.tracks.items && j.tracks.items[0]; }
   if (!f) throw new Error("Não achei “" + musica + "” no Spotify.");
-  const res = { uri: f.uri, titulo: f.name + " — " + f.artists.map((a) => a.name).join(", ") };
+  const res = { uri: f.uri, titulo: f.name + " — " + f.artists.map((x) => x.name).join(", "), dur: f.duration_ms };
   cache[musica] = res; guarda.gravar("cache", cache);
   return res;
 }
@@ -193,7 +204,32 @@ async function aquecer() {
   aparelho().then((id) => { apId = id; }).catch(() => {});
   for (const [, musica] of cenas) { try { await resolver(musica); } catch (e) {} }
 }
-async function repetir(id, i, nome, faixa, musica) {
+let rodada = 0, relogio = null, vigiaAtual = null;
+function corteDe(cena, faixa) {
+  const g = guarda.ler("corte", CORTE_PADRAO);
+  let ini = (cena[2] ? cena[2][0] : g.ini) * 1000, fim = (cena[2] ? cena[2][1] : g.fim) * 1000;
+  if (!faixa.dur || faixa.dur - ini - fim < 20000) { ini = 0; fim = 0; }   // faixa curta demais: não corta
+  return { ini, fim };
+}
+function vigiar(id, faixa, corte, minha) {
+  // volta para o ponto inicial pouco antes do trecho final cortado
+  const alvo = faixa.dur - corte.fim;
+  const agenda = (ms) => { clearTimeout(relogio); relogio = setTimeout(confere, Math.max(250, ms)); };
+  const confere = async () => {
+    if (minha !== rodada) return;
+    let j = null; try { j = await api("GET", "/me/player"); } catch (e) { return agenda(5000); }
+    if (minha !== rodada) return;
+    if (!j || !j.item || j.item.uri !== faixa.uri) return;            // trocaram a música por fora: larga
+    if (!j.is_playing) return agenda(3000);
+    const resta = alvo - j.progress_ms;
+    if (resta > 900) return agenda(resta > 6000 ? resta - 4000 : resta - 350);
+    try { await api("PUT", "/me/player/seek?position_ms=" + corte.ini + "&device_id=" + encodeURIComponent(id)); } catch (e) {}
+    agenda(alvo - corte.ini - 4000);
+  };
+  vigiaAtual = confere;
+  agenda(alvo - corte.ini - 4000);
+}
+async function repetir(id, i, faixa, musica) {
   let ok = false;
   for (let k = 0; k < 5 && !ok && tocando === i; k++) { await espera(400); try { await api("PUT", "/me/player/repeat?state=track&device_id=" + encodeURIComponent(id)); ok = true; } catch (e) {} }
   if (tocando === i && !ok) $("agora").lastChild.textContent = (faixa.titulo || musica) + " · loop não confirmado";
@@ -202,20 +238,25 @@ async function tocar(i) {
   const [nome, musica] = cenas[i];
   const botao = $("grade").children[i];
   botao.classList.add("carregando"); aviso("");
+  const minha = ++rodada; clearTimeout(relogio); vigiaAtual = null;
   try {
     const faixa = await resolver(musica);
-    const manda = (id) => api("PUT", "/me/player/play?device_id=" + encodeURIComponent(id), { uris: [faixa.uri] });
+    const corte = corteDe(cenas[i], faixa);
+    const manda = (id) => api("PUT", "/me/player/play?device_id=" + encodeURIComponent(id), { uris: [faixa.uri], position_ms: corte.ini });
     if (!apId) apId = await aparelho();
     try { await manda(apId); }
     catch (e) { if (e.status !== 404 && e.status !== 502) throw e; apId = await aparelho(); await manda(apId); }
+    if (minha !== rodada) return;
     tocando = i; pintar();
-    $("agora").innerHTML = ""; const b = document.createElement("b"); b.textContent = nome; const sp = document.createElement("span"); sp.textContent = (faixa.titulo || musica) + " · em loop"; $("agora").append(b, sp);
-    repetir(apId, i, nome, faixa, musica);
+    const cortado = corte.ini || corte.fim;
+    $("agora").innerHTML = ""; const b = document.createElement("b"); b.textContent = nome; const sp = document.createElement("span"); sp.textContent = (faixa.titulo || musica) + (cortado ? " · em loop, sem " + corte.ini / 1000 + "s do início e " + corte.fim / 1000 + "s do fim" : " · em loop"); $("agora").append(b, sp);
+    repetir(apId, i, faixa, musica);
+    if (cortado) vigiar(apId, faixa, corte, minha);
   } catch (e) { apId = null; erro(e); }
-  botao.classList.remove("carregando");
+  finally { botao.classList.remove("carregando"); }
 }
 async function parar() {
-  aviso("");
+  aviso(""); rodada++; clearTimeout(relogio); vigiaAtual = null;
   try { await api("PUT", "/me/player/pause"); } catch (e) { if (e.status !== 403) erro(e); }
   tocando = -1; pintar();
   $("agora").innerHTML = "<b>Nada tocando</b><span>Toque numa cena</span>";
@@ -240,12 +281,20 @@ function pintar() {
     b.append(n, f); b.onclick = () => tocar(i); g.append(b);
   });
 }
-function textoDaLista(l) { return l.map(([a, b]) => a + " | " + b).join("\n"); }
-function listaDoTexto(t) { return t.split("\n").map((x) => x.trim()).filter(Boolean).map((x) => { const i = x.indexOf("|"); return i < 0 ? [x, x] : [x.slice(0, i).trim(), x.slice(i + 1).trim()]; }).filter(([a, b]) => a && b); }
+function textoDaLista(l) { return l.map(([a, b, c]) => a + " | " + b + (c ? " | " + c[0] + "-" + c[1] : "")).join("\n"); }
+function listaDoTexto(t) {
+  return t.split("\n").map((x) => x.trim()).filter(Boolean).map((x) => {
+    const p = x.split("|").map((y) => y.trim());
+    if (p.length < 2) return [x, x];
+    const m = p[2] && p[2].match(/^(\d+)\s*-\s*(\d+)$/);
+    return m ? [p[0], p[1], [+m[1], +m[2]]] : [p[0], p.slice(1).join(" | ")];
+  }).filter(([a, b]) => a && b);
+}
 
-$("abrirAjustes").onclick = () => { $("lista").value = textoDaLista(cenas); mostrar("telaAjustes"); };
+$("abrirAjustes").onclick = () => { $("lista").value = textoDaLista(cenas); const c = guarda.ler("corte", CORTE_PADRAO); $("corteIni").value = c.ini; $("corteFim").value = c.fim; mostrar("telaAjustes"); };
 $("fecharAjustes").onclick = () => mostrar(null);
 $("salvarLista").onclick = () => { const l = listaDoTexto($("lista").value); if (!l.length) return aviso("A lista ficou vazia."); cenas = l; guarda.gravar("cenas", cenas); tocando = -1; pintar(); aviso(""); mostrar(null); aquecer(); };
+$("salvarCorte").onclick = () => { const n = (id) => Math.max(0, Math.min(120, parseInt($(id).value, 10) || 0)); guarda.gravar("corte", { ini: n("corteIni"), fim: n("corteFim") }); aviso(""); mostrar(null); };
 $("restaurar").onclick = () => { $("lista").value = textoDaLista(PADRAO); };
 $("sair").onclick = () => { guarda.apagar("token"); mostrar("telaLogin"); };
 $("trocarId").onclick = () => { guarda.apagar("token"); $("clientId").value = guarda.ler("clientId", ID_PADRAO); mostrar("telaConfig"); };
@@ -269,7 +318,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
   if (!guarda.ler("clientId", ID_PADRAO)) return mostrar("telaConfig");
   if (!guarda.ler("token", null)) return mostrar("telaLogin");
   mostrar(null); pintar(); telaAcesa(); aquecer();
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) aquecer(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) { aquecer(); if (vigiaAtual) vigiaAtual(); } });
 })();
 </script>
 </body>
