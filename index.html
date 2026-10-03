@@ -186,20 +186,32 @@ async function aparelho() {
   return (ds.find((d) => d.is_active) || ds.find((d) => d.type === "Smartphone") || ds[0]).id;
 }
 const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+let apId = null;
+async function aquecer() {
+  // deixa tudo pronto antes do primeiro toque: token, aparelho e as faixas de todas as cenas
+  try { await token(); } catch (e) { return; }
+  aparelho().then((id) => { apId = id; }).catch(() => {});
+  for (const [, musica] of cenas) { try { await resolver(musica); } catch (e) {} }
+}
+async function repetir(id, i, nome, faixa, musica) {
+  let ok = false;
+  for (let k = 0; k < 5 && !ok && tocando === i; k++) { await espera(400); try { await api("PUT", "/me/player/repeat?state=track&device_id=" + encodeURIComponent(id)); ok = true; } catch (e) {} }
+  if (tocando === i && !ok) $("agora").lastChild.textContent = (faixa.titulo || musica) + " · loop não confirmado";
+}
 async function tocar(i) {
   const [nome, musica] = cenas[i];
   const botao = $("grade").children[i];
   botao.classList.add("carregando"); aviso("");
   try {
     const faixa = await resolver(musica);
-    const id = await aparelho();
-    await api("PUT", "/me/player/play?device_id=" + encodeURIComponent(id), { uris: [faixa.uri] });
-    // o modo de repetição só é aceito depois que a faixa começa
-    let ok = false;
-    for (let k = 0; k < 4 && !ok; k++) { await espera(500); try { await api("PUT", "/me/player/repeat?state=track&device_id=" + encodeURIComponent(id)); ok = true; } catch (e) {} }
+    const manda = (id) => api("PUT", "/me/player/play?device_id=" + encodeURIComponent(id), { uris: [faixa.uri] });
+    if (!apId) apId = await aparelho();
+    try { await manda(apId); }
+    catch (e) { if (e.status !== 404 && e.status !== 502) throw e; apId = await aparelho(); await manda(apId); }
     tocando = i; pintar();
-    $("agora").innerHTML = ""; const b = document.createElement("b"); b.textContent = nome; const s = document.createElement("span"); s.textContent = (faixa.titulo || musica) + (ok ? " · em loop" : " · loop não confirmado"); $("agora").append(b, s);
-  } catch (e) { erro(e); }
+    $("agora").innerHTML = ""; const b = document.createElement("b"); b.textContent = nome; const sp = document.createElement("span"); sp.textContent = (faixa.titulo || musica) + " · em loop"; $("agora").append(b, sp);
+    repetir(apId, i, nome, faixa, musica);
+  } catch (e) { apId = null; erro(e); }
   botao.classList.remove("carregando");
 }
 async function parar() {
@@ -233,7 +245,7 @@ function listaDoTexto(t) { return t.split("\n").map((x) => x.trim()).filter(Bool
 
 $("abrirAjustes").onclick = () => { $("lista").value = textoDaLista(cenas); mostrar("telaAjustes"); };
 $("fecharAjustes").onclick = () => mostrar(null);
-$("salvarLista").onclick = () => { const l = listaDoTexto($("lista").value); if (!l.length) return aviso("A lista ficou vazia."); cenas = l; guarda.gravar("cenas", cenas); tocando = -1; pintar(); aviso(""); mostrar(null); };
+$("salvarLista").onclick = () => { const l = listaDoTexto($("lista").value); if (!l.length) return aviso("A lista ficou vazia."); cenas = l; guarda.gravar("cenas", cenas); tocando = -1; pintar(); aviso(""); mostrar(null); aquecer(); };
 $("restaurar").onclick = () => { $("lista").value = textoDaLista(PADRAO); };
 $("sair").onclick = () => { guarda.apagar("token"); mostrar("telaLogin"); };
 $("trocarId").onclick = () => { guarda.apagar("token"); $("clientId").value = guarda.ler("clientId", ID_PADRAO); mostrar("telaConfig"); };
@@ -256,7 +268,8 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
   }
   if (!guarda.ler("clientId", ID_PADRAO)) return mostrar("telaConfig");
   if (!guarda.ler("token", null)) return mostrar("telaLogin");
-  mostrar(null); pintar(); telaAcesa();
+  mostrar(null); pintar(); telaAcesa(); aquecer();
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) aquecer(); });
 })();
 </script>
 </body>
