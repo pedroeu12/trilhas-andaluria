@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#120c0f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Trilhas de Andaluria</title>
+<style>
+:root{--fundo:#120c0f;--painel:#1f161b;--borda:#3a2a31;--texto:#e9dfcd;--mudo:#b3a498;--ouro:#d4a94e;--vinho:#a8374a;--vinho-f:#5c1a27;--erro:#e2687a}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--fundo);color:var(--texto);font-family:Georgia,"Palatino Linotype",serif}
+body{min-height:100dvh;padding:calc(12px + env(safe-area-inset-top)) 12px calc(96px + env(safe-area-inset-bottom))}
+header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+h1{font-size:1.05rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ouro);margin:0;font-weight:700}
+button{font:inherit;color:inherit;border:1px solid var(--borda);background:var(--painel);border-radius:10px;cursor:pointer}
+.mini{padding:8px 12px;font-size:.85rem;color:var(--mudo)}
+#grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.cena{min-height:96px;padding:12px;text-align:left;display:flex;flex-direction:column;justify-content:space-between;gap:6px;transition:transform .08s,border-color .15s,background .15s}
+.cena:active{transform:scale(.97)}
+.cena .nome{font-size:1.02rem;font-weight:700;line-height:1.2}
+.cena .faixa{font-size:.78rem;color:var(--mudo);line-height:1.25}
+.cena.tocando{border-color:var(--ouro);background:linear-gradient(160deg,var(--vinho-f),var(--painel));box-shadow:0 0 0 1px var(--ouro) inset}
+.cena.tocando .faixa{color:var(--texto)}
+.cena.carregando{opacity:.6}
+#barra{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:rgba(18,12,15,.96);border-top:1px solid var(--borda);display:flex;align-items:center;gap:10px}
+#agora{flex:1;min-width:0}
+#agora b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.95rem}
+#agora span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.78rem;color:var(--mudo)}
+#parar{padding:12px 18px;border-color:var(--vinho);color:#fff;background:var(--vinho-f);font-weight:700}
+#aviso{margin:0 0 12px;padding:10px 12px;border-radius:10px;border:1px solid var(--erro);color:var(--erro);font-size:.9rem;display:none}
+.cartao{border:1px solid var(--borda);background:var(--painel);border-radius:12px;padding:16px;margin-bottom:12px;line-height:1.5}
+.cartao h2{margin:0 0 8px;font-size:1rem;color:var(--ouro);letter-spacing:.05em;text-transform:uppercase}
+.cartao ol{padding-left:1.2em;margin:8px 0}
+input,textarea{width:100%;font:inherit;font-family:ui-monospace,Consolas,monospace;font-size:.85rem;color:var(--texto);background:#0e090b;border:1px solid var(--borda);border-radius:8px;padding:10px}
+textarea{min-height:260px}
+code{background:#0e090b;border:1px solid var(--borda);border-radius:6px;padding:2px 6px;font-size:.82rem;word-break:break-all}
+.primario{padding:12px 16px;background:var(--ouro);color:#1a1114;border-color:var(--ouro);font-weight:700;margin-top:10px}
+.oculto{display:none!important}
+.linha{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Trilhas de Andaluria</h1>
+  <button class="mini" id="abrirAjustes">Ajustes</button>
+</header>
+<p id="aviso"></p>
+
+<section id="telaConfig" class="oculto">
+  <div class="cartao">
+    <h2>Primeira configuração</h2>
+    <ol>
+      <li>Entre em <b>developer.spotify.com/dashboard</b> com a sua conta e crie um app.</li>
+      <li>Em <b>Redirect URIs</b>, cole exatamente este endereço: <br><code id="redir"></code></li>
+      <li>Marque a opção <b>Web API</b> e salve.</li>
+      <li>Copie o <b>Client ID</b> do app e cole abaixo.</li>
+    </ol>
+    <input id="clientId" placeholder="Client ID do seu app do Spotify" autocomplete="off" autocapitalize="off">
+    <button class="primario" id="salvarId">Salvar e conectar ao Spotify</button>
+  </div>
+</section>
+
+<section id="telaLogin" class="oculto">
+  <div class="cartao">
+    <h2>Conectar</h2>
+    <p>Toque para autorizar este painel a controlar a reprodução do seu Spotify.</p>
+    <button class="primario" id="entrar">Conectar ao Spotify</button>
+  </div>
+</section>
+
+<section id="telaAjustes" class="oculto">
+  <div class="cartao">
+    <h2>Cenas</h2>
+    <p>Uma cena por linha, no formato <code>Nome da cena | música</code>. A música pode ser um texto de busca ou um link de faixa do Spotify.</p>
+    <textarea id="lista" spellcheck="false"></textarea>
+    <div class="linha">
+      <button class="primario" id="salvarLista">Salvar cenas</button>
+      <button class="mini" id="restaurar">Restaurar a lista da Sessão 01</button>
+    </div>
+  </div>
+  <div class="cartao">
+    <h2>Conta</h2>
+    <div class="linha">
+      <button class="mini" id="sair">Desconectar do Spotify</button>
+      <button class="mini" id="trocarId">Trocar Client ID</button>
+      <button class="mini" id="fecharAjustes">Voltar</button>
+    </div>
+  </div>
+</section>
+
+<main id="grade"></main>
+
+<footer id="barra" class="oculto">
+  <div id="agora"><b>Nada tocando</b><span>Toque numa cena</span></div>
+  <button id="parar">Parar</button>
+</footer>
+
+<script>
+"use strict";
+const PADRAO = [
+  ["Início: a praça", "Bloodborne Omen"],
+  ["Cena: o festival", "Darkest Dungeon The Hamlet"],
+  ["Cena: a taverna", "Witcher 3 The Nightingale"],
+  ["Cena: o ritual", "Witcher 3 Ladies of the Woods"],
+  ["Santavio", "Diablo II Tristram Matt Uelmen"],
+  ["Taverna de Santavio", "Witcher 3 Whispers of Oxenfurt"],
+  ["Vinhedos da Condesa", "Bloodborne Queen of the Vilebloods"],
+  ["Acampamentos Caio", "Witcher 3 The Fields of Ard Skellig"],
+  ["Base da Spade", "Bloodborne Hunter's Dream"],
+  ["Rio Valmorria", "Dark Souls II Majula"]
+];
+const ESCOPOS = "user-modify-playback-state user-read-playback-state";
+const REDIR = location.origin + location.pathname;
+const $ = (id) => document.getElementById(id);
+const guarda = {
+  ler(k, d) { try { const v = localStorage.getItem("trilhas." + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  gravar(k, v) { try { localStorage.setItem("trilhas." + k, JSON.stringify(v)); } catch (e) {} },
+  apagar(k) { try { localStorage.removeItem("trilhas." + k); } catch (e) {} }
+};
+let cenas = guarda.ler("cenas", PADRAO);
+let tocando = -1;
+
+function aviso(msg) { const a = $("aviso"); if (!msg) { a.style.display = "none"; return; } a.textContent = msg; a.style.display = "block"; }
+function mostrar(tela) {
+  for (const t of ["telaConfig", "telaLogin", "telaAjustes"]) $(t).classList.toggle("oculto", t !== tela);
+  const painel = tela === null;
+  $("grade").classList.toggle("oculto", !painel);
+  $("barra").classList.toggle("oculto", !painel);
+  $("abrirAjustes").classList.toggle("oculto", !painel);
+}
+
+/* ---------- login (Authorization Code com PKCE) ---------- */
+function aleatorio(n) { const a = new Uint8Array(n); crypto.getRandomValues(a); return Array.from(a, (b) => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"[b % 62]).join(""); }
+async function desafio(v) { const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(v)); return btoa(String.fromCharCode(...new Uint8Array(h))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+async function entrar() {
+  const id = guarda.ler("clientId", "");
+  if (!id) return mostrar("telaConfig");
+  const v = aleatorio(64); guarda.gravar("verificador", v);
+  const p = new URLSearchParams({ client_id: id, response_type: "code", redirect_uri: REDIR, scope: ESCOPOS, code_challenge_method: "S256", code_challenge: await desafio(v) });
+  location.href = "https://accounts.spotify.com/authorize?" + p;
+}
+async function pedirToken(corpo) {
+  const r = await fetch("https://accounts.spotify.com/api/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(corpo) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error_description || j.error || ("erro " + r.status));
+  guarda.gravar("token", { acesso: j.access_token, renova: j.refresh_token || (guarda.ler("token", {}).renova), expira: Date.now() + (j.expires_in - 60) * 1000 });
+}
+async function token() {
+  const t = guarda.ler("token", null);
+  if (!t) throw new Error("sem-login");
+  if (Date.now() < t.expira) return t.acesso;
+  await pedirToken({ grant_type: "refresh_token", refresh_token: t.renova, client_id: guarda.ler("clientId", "") });
+  return guarda.ler("token", {}).acesso;
+}
+
+/* ---------- Spotify ---------- */
+async function api(metodo, caminho, corpo) {
+  const r = await fetch("https://api.spotify.com/v1" + caminho, { method: metodo, headers: { Authorization: "Bearer " + await token(), "Content-Type": "application/json" }, body: corpo ? JSON.stringify(corpo) : undefined });
+  if (r.status === 204 || r.status === 202) return null;
+  const txt = await r.text(); let j = null; try { j = txt ? JSON.parse(txt) : null; } catch (e) {}
+  if (!r.ok) { const err = new Error((j && j.error && (j.error.message || j.error.reason)) || ("erro " + r.status)); err.status = r.status; err.reason = j && j.error && j.error.reason; throw err; }
+  return j;
+}
+function uriDe(musica) {
+  let m = musica.match(/open\.spotify\.com\/(?:intl-[a-z]+\/)?track\/([A-Za-z0-9]+)/) || musica.match(/^spotify:track:([A-Za-z0-9]+)$/);
+  return m ? "spotify:track:" + m[1] : null;
+}
+async function resolver(musica) {
+  const direto = uriDe(musica); if (direto) return { uri: direto, titulo: "" };
+  const cache = guarda.ler("cache", {});
+  if (cache[musica]) return cache[musica];
+  const j = await api("GET", "/search?type=track&limit=1&q=" + encodeURIComponent(musica));
+  const f = j && j.tracks && j.tracks.items && j.tracks.items[0];
+  if (!f) throw new Error("Não achei “" + musica + "” no Spotify.");
+  const res = { uri: f.uri, titulo: f.name + " — " + f.artists.map((a) => a.name).join(", ") };
+  cache[musica] = res; guarda.gravar("cache", cache);
+  return res;
+}
+async function aparelho() {
+  const j = await api("GET", "/me/player/devices");
+  const ds = (j && j.devices) || [];
+  if (!ds.length) { const e = new Error("sem-aparelho"); throw e; }
+  return (ds.find((d) => d.is_active) || ds.find((d) => d.type === "Smartphone") || ds[0]).id;
+}
+const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+async function tocar(i) {
+  const [nome, musica] = cenas[i];
+  const botao = $("grade").children[i];
+  botao.classList.add("carregando"); aviso("");
+  try {
+    const faixa = await resolver(musica);
+    const id = await aparelho();
+    await api("PUT", "/me/player/play?device_id=" + encodeURIComponent(id), { uris: [faixa.uri] });
+    // o modo de repetição só é aceito depois que a faixa começa
+    let ok = false;
+    for (let k = 0; k < 4 && !ok; k++) { await espera(500); try { await api("PUT", "/me/player/repeat?state=track&device_id=" + encodeURIComponent(id)); ok = true; } catch (e) {} }
+    tocando = i; pintar();
+    $("agora").innerHTML = ""; const b = document.createElement("b"); b.textContent = nome; const s = document.createElement("span"); s.textContent = (faixa.titulo || musica) + (ok ? " · em loop" : " · loop não confirmado"); $("agora").append(b, s);
+  } catch (e) { erro(e); }
+  botao.classList.remove("carregando");
+}
+async function parar() {
+  aviso("");
+  try { await api("PUT", "/me/player/pause"); } catch (e) { if (e.status !== 403) erro(e); }
+  tocando = -1; pintar();
+  $("agora").innerHTML = "<b>Nada tocando</b><span>Toque numa cena</span>";
+}
+function erro(e) {
+  if (e.message === "sem-login") return mostrar(guarda.ler("clientId", "") ? "telaLogin" : "telaConfig");
+  if (e.message === "sem-aparelho" || e.reason === "NO_ACTIVE_DEVICE" || e.status === 404) return aviso("O Spotify não está ativo em nenhum aparelho. Abra o app do Spotify, toque qualquer música por um segundo e volte aqui.");
+  if (e.reason === "PREMIUM_REQUIRED" || e.status === 403) return aviso("O Spotify recusou o comando. Controlar a reprodução exige conta Premium.");
+  if (e.status === 401) { guarda.apagar("token"); return mostrar("telaLogin"); }
+  if (e.status === 429) return aviso("Muitos comandos seguidos. Espere alguns segundos.");
+  aviso("Erro: " + e.message);
+}
+
+/* ---------- interface ---------- */
+function pintar() {
+  const g = $("grade"); g.innerHTML = "";
+  const cache = guarda.ler("cache", {});
+  cenas.forEach(([nome, musica], i) => {
+    const b = document.createElement("button"); b.className = "cena" + (i === tocando ? " tocando" : "");
+    const n = document.createElement("span"); n.className = "nome"; n.textContent = nome;
+    const f = document.createElement("span"); f.className = "faixa"; f.textContent = (cache[musica] && cache[musica].titulo) || musica;
+    b.append(n, f); b.onclick = () => tocar(i); g.append(b);
+  });
+}
+function textoDaLista(l) { return l.map(([a, b]) => a + " | " + b).join("\n"); }
+function listaDoTexto(t) { return t.split("\n").map((x) => x.trim()).filter(Boolean).map((x) => { const i = x.indexOf("|"); return i < 0 ? [x, x] : [x.slice(0, i).trim(), x.slice(i + 1).trim()]; }).filter(([a, b]) => a && b); }
+
+$("abrirAjustes").onclick = () => { $("lista").value = textoDaLista(cenas); mostrar("telaAjustes"); };
+$("fecharAjustes").onclick = () => mostrar(null);
+$("salvarLista").onclick = () => { const l = listaDoTexto($("lista").value); if (!l.length) return aviso("A lista ficou vazia."); cenas = l; guarda.gravar("cenas", cenas); tocando = -1; pintar(); aviso(""); mostrar(null); };
+$("restaurar").onclick = () => { $("lista").value = textoDaLista(PADRAO); };
+$("sair").onclick = () => { guarda.apagar("token"); mostrar("telaLogin"); };
+$("trocarId").onclick = () => { guarda.apagar("token"); $("clientId").value = guarda.ler("clientId", ""); mostrar("telaConfig"); };
+$("salvarId").onclick = () => { const v = $("clientId").value.trim(); if (!/^[0-9a-f]{32}$/i.test(v)) return aviso("O Client ID tem 32 caracteres (letras de a a f e números). Confira o que você colou."); guarda.gravar("clientId", v); aviso(""); entrar(); };
+$("entrar").onclick = entrar;
+$("parar").onclick = parar;
+$("redir").textContent = REDIR;
+
+// mantém a tela acesa durante a sessão, quando o navegador permite
+async function telaAcesa() { try { if ("wakeLock" in navigator) await navigator.wakeLock.request("screen"); } catch (e) {} }
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") telaAcesa(); });
+
+(async function iniciar() {
+  const q = new URLSearchParams(location.search);
+  if (q.get("error")) { history.replaceState(null, "", REDIR); aviso("O Spotify não autorizou: " + q.get("error")); }
+  if (q.get("code")) {
+    const code = q.get("code"); history.replaceState(null, "", REDIR);
+    try { await pedirToken({ grant_type: "authorization_code", code, redirect_uri: REDIR, client_id: guarda.ler("clientId", ""), code_verifier: guarda.ler("verificador", "") }); guarda.apagar("verificador"); }
+    catch (e) { aviso("Não consegui concluir o login: " + e.message); }
+  }
+  if (!guarda.ler("clientId", "")) return mostrar("telaConfig");
+  if (!guarda.ler("token", null)) return mostrar("telaLogin");
+  mostrar(null); pintar(); telaAcesa();
+})();
+</script>
+</body>
+</html>
