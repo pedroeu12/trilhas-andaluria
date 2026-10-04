@@ -67,13 +67,15 @@ code{background:#0e090b;border:1px solid var(--borda);border-radius:6px;padding:
     <h2>Conectar</h2>
     <p>Toque para autorizar este painel a controlar a reprodução do seu Spotify.</p>
     <button class="primario" id="entrar">Conectar ao Spotify</button>
+    <p style="margin-top:14px">Só vai usar links do YouTube ou YouTube Music? Não precisa conectar.</p>
+    <button class="mini" id="semSpotify">Usar sem Spotify</button>
   </div>
 </section>
 
 <section id="telaAjustes" class="oculto">
   <div class="cartao">
     <h2>Cenas</h2>
-    <p>Uma cena por linha, no formato <code>Nome da cena | música</code>. A música pode ser um texto de busca ou um link de faixa do Spotify.</p>
+    <p>Uma cena por linha, no formato <code>Nome da cena | música</code>. A música pode ser um texto de busca ou um link de faixa do Spotify, ou um link do YouTube ou do YouTube Music (nesse caso ela toca aqui mesmo, na página).</p>
     <textarea id="lista" spellcheck="false"></textarea>
     <div class="linha">
       <button class="primario" id="salvarLista">Salvar cenas</button>
@@ -100,6 +102,8 @@ code{background:#0e090b;border:1px solid var(--borda);border-radius:6px;padding:
 </section>
 
 <main id="grade"></main>
+
+<div id="ytCaixa" class="oculto" style="position:fixed;right:10px;bottom:78px;width:176px;z-index:4;border-radius:10px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.6)"><div id="ytAlvo"></div></div>
 
 <footer id="barra" class="oculto">
   <div id="agora"><b>Nada tocando</b><span>Toque numa cena</span></div>
@@ -180,6 +184,7 @@ function uriDe(musica) {
 }
 async function resolver(musica) {
   const cache = guarda.ler("cache", {});
+  if (ytDe(musica)) throw new Error("link do YouTube");
   if (cache[musica] && cache[musica].dur) return cache[musica];
   const direto = uriDe(musica) || (cache[musica] && cache[musica].uri);
   let f;
@@ -202,7 +207,7 @@ async function aquecer() {
   // deixa tudo pronto antes do primeiro toque: token, aparelho e as faixas de todas as cenas
   try { await token(); } catch (e) { return; }
   aparelho().then((id) => { apId = id; }).catch(() => {});
-  for (const [, musica] of cenas) { try { await resolver(musica); } catch (e) {} }
+  for (const [, musica] of cenas) { if (ytDe(musica)) continue; try { await resolver(musica); } catch (e) {} }
 }
 let rodada = 0, relogio = null, vigiaAtual = null;
 function corteDe(cena, faixa) {
@@ -234,11 +239,59 @@ async function repetir(id, i, faixa, musica) {
   for (let k = 0; k < 5 && !ok && tocando === i; k++) { await espera(400); try { await api("PUT", "/me/player/repeat?state=track&device_id=" + encodeURIComponent(id)); ok = true; } catch (e) {} }
   if (tocando === i && !ok) $("agora").lastChild.textContent = (faixa.titulo || musica) + " · loop não confirmado";
 }
+/* ---- YouTube / YouTube Music: toca na própria página, pelo player oficial embutido ---- */
+function ytDe(musica) {
+  const m = musica.match(/(?:youtube\.com\/(?:watch\?(?:[^\s#]*&)?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+let yt = null, ytPronto = null, ytLaco = null, ytCorte = null;
+function ytCarregar() {
+  if (ytPronto) return ytPronto;
+  ytPronto = new Promise((ok, falhou) => {
+    const antes = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { if (antes) antes();
+      yt = new YT.Player("ytAlvo", { width: 176, height: 99, playerVars: { playsinline: 1, rel: 0, modestbranding: 1 },
+        events: { onReady: () => ok(yt),
+          onStateChange: (e) => { if (e.data === 0 && ytCorte) { yt.seekTo(ytCorte.ini, true); yt.playVideo(); } },
+          onError: (e) => { aviso(e.data === 101 || e.data === 150 ? "O dono desse vídeo não deixa tocar fora do YouTube. Use outro link para essa cena." : "O YouTube não conseguiu tocar esse link. Confira se o endereço está certo."); } } });
+    };
+    const sc = document.createElement("script"); sc.src = "https://www.youtube.com/iframe_api"; sc.onerror = () => { ytPronto = null; falhou(new Error("Não consegui carregar o player do YouTube. Confira a internet.")); }; document.head.appendChild(sc);
+  });
+  return ytPronto;
+}
+function ytParar() { clearInterval(ytLaco); ytLaco = null; ytCorte = null; try { if (yt && yt.pauseVideo) yt.pauseVideo(); } catch (e) {} $("ytCaixa").classList.add("oculto"); }
+async function tocarYt(i, vid, minha) {
+  const [nome] = cenas[i], g = guarda.ler("corte", CORTE_PADRAO);
+  const ini = cenas[i][2] ? cenas[i][2][0] : g.ini, fim = cenas[i][2] ? cenas[i][2][1] : g.fim;
+  if (guarda.ler("token", null)) api("PUT", "/me/player/pause").catch(() => {});   // cala o Spotify, se estiver tocando
+  $("ytCaixa").classList.remove("oculto");
+  const p = await ytCarregar(); if (minha !== rodada) return;
+  clearInterval(ytLaco); ytCorte = { ini: 0 };
+  p.loadVideoById({ videoId: vid, startSeconds: ini });
+  tocando = i; pintar();
+  const rotulo = (extra) => { $("agora").innerHTML = ""; const b = document.createElement("b"); b.textContent = nome; const sp = document.createElement("span"); sp.textContent = extra; $("agora").append(b, sp); };
+  rotulo("YouTube · em loop");
+  let avisou = false; const t0 = Date.now();
+  ytLaco = setInterval(() => {
+    if (minha !== rodada) return clearInterval(ytLaco);
+    let d = 0, t = 0, est = -1; try { d = p.getDuration(); t = p.getCurrentTime(); est = p.getPlayerState(); } catch (e) { return; }
+    if (d > 0) {
+      const corta = d - ini - fim >= 20; ytCorte = { ini: corta ? ini : 0 };
+      if (corta && t >= d - fim) p.seekTo(ini, true);
+      const dados = p.getVideoData ? p.getVideoData() : null;
+      if (dados && dados.title && !avisou) { const cache = guarda.ler("cache", {}); cache[cenas[i][1]] = { titulo: dados.title + " · YouTube", yt: true }; guarda.gravar("cache", cache); rotulo(dados.title + (corta ? " · em loop, sem " + ini + "s do início e " + fim + "s do fim" : " · em loop")); avisou = true; }
+    }
+    if (est !== 1 && est !== 3 && Date.now() - t0 > 3500 && Date.now() - t0 < 5000) aviso("Se não começou a tocar, toque no vídeo pequeno no canto da tela. Alguns celulares pedem esse primeiro toque.");
+  }, 400);
+}
 async function tocar(i) {
   const [nome, musica] = cenas[i];
   const botao = $("grade").children[i];
   botao.classList.add("carregando"); aviso("");
   const minha = ++rodada; clearTimeout(relogio); vigiaAtual = null;
+  const vid = ytDe(musica);
+  if (vid) { try { await tocarYt(i, vid, minha); } catch (e) { aviso(e.message); } finally { botao.classList.remove("carregando"); } return; }
+  ytParar();
   try {
     const faixa = await resolver(musica);
     const corte = corteDe(cenas[i], faixa);
@@ -257,7 +310,8 @@ async function tocar(i) {
 }
 async function parar() {
   aviso(""); rodada++; clearTimeout(relogio); vigiaAtual = null;
-  try { await api("PUT", "/me/player/pause"); } catch (e) { if (e.status !== 403) erro(e); }
+  const eraYt = !!ytLaco; ytParar();
+  if (!eraYt || guarda.ler("token", null)) { try { await api("PUT", "/me/player/pause"); } catch (e) { if (e.status !== 403 && !eraYt) erro(e); } }
   tocando = -1; pintar();
   $("agora").innerHTML = "<b>Nada tocando</b><span>Toque numa cena</span>";
 }
@@ -296,7 +350,8 @@ $("fecharAjustes").onclick = () => mostrar(null);
 $("salvarLista").onclick = () => { const l = listaDoTexto($("lista").value); if (!l.length) return aviso("A lista ficou vazia."); cenas = l; guarda.gravar("cenas", cenas); tocando = -1; pintar(); aviso(""); mostrar(null); aquecer(); };
 $("salvarCorte").onclick = () => { const n = (id) => Math.max(0, Math.min(120, parseInt($(id).value, 10) || 0)); guarda.gravar("corte", { ini: n("corteIni"), fim: n("corteFim") }); aviso(""); mostrar(null); };
 $("restaurar").onclick = () => { $("lista").value = textoDaLista(PADRAO); };
-$("sair").onclick = () => { guarda.apagar("token"); mostrar("telaLogin"); };
+$("semSpotify").onclick = () => { guarda.gravar("semSpotify", true); mostrar(null); pintar(); telaAcesa(); };
+$("sair").onclick = () => { guarda.apagar("semSpotify"); guarda.apagar("token"); mostrar("telaLogin"); };
 $("trocarId").onclick = () => { guarda.apagar("token"); $("clientId").value = guarda.ler("clientId", ID_PADRAO); mostrar("telaConfig"); };
 $("salvarId").onclick = () => { const v = $("clientId").value.trim(); if (!/^[0-9a-f]{32}$/i.test(v)) return aviso("O Client ID tem 32 caracteres (letras de a a f e números). Confira o que você colou."); guarda.gravar("clientId", v); aviso(""); entrar(); };
 $("entrar").onclick = entrar;
@@ -316,7 +371,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
     catch (e) { aviso("Não consegui concluir o login: " + e.message); }
   }
   if (!guarda.ler("clientId", ID_PADRAO)) return mostrar("telaConfig");
-  if (!guarda.ler("token", null)) return mostrar("telaLogin");
+  if (!guarda.ler("token", null) && !guarda.ler("semSpotify", false)) return mostrar("telaLogin");
   mostrar(null); pintar(); telaAcesa(); aquecer();
   document.addEventListener("visibilitychange", () => { if (!document.hidden) { aquecer(); if (vigiaAtual) vigiaAtual(); } });
 })();
