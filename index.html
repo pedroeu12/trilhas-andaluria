@@ -64,11 +64,13 @@ code{background:#0e090b;border:1px solid var(--borda);border-radius:6px;padding:
 
 <section id="telaLogin" class="oculto">
   <div class="cartao">
-    <h2>Conectar</h2>
-    <p>Toque para autorizar este painel a controlar a reprodução do seu Spotify.</p>
-    <button class="primario" id="entrar">Conectar ao Spotify</button>
-    <p style="margin-top:14px">Só vai usar links do YouTube ou YouTube Music? Não precisa conectar.</p>
-    <button class="mini" id="semSpotify">Usar sem Spotify</button>
+    <h2>De onde vem a música?</h2>
+    <p>Escolha o serviço que você usa. Dá para trocar depois nas configurações.</p>
+    <div class="linha">
+      <button class="primario" id="semSpotify">YouTube ou YouTube Music</button>
+      <button class="primario" id="entrar">Spotify</button>
+    </div>
+    <p style="margin-top:14px"><b>YouTube:</b> não precisa de login nem de conta paga. Cada cena usa um link de vídeo ou de faixa e toca aqui na página.<br><b>Spotify:</b> pede login e conta Premium. Cada cena pode ser um texto de busca, e a música toca no app do Spotify.</p>
   </div>
 </section>
 
@@ -94,7 +96,7 @@ code{background:#0e090b;border:1px solid var(--borda);border-radius:6px;padding:
   <div class="cartao">
     <h2>Conta</h2>
     <div class="linha">
-      <button class="mini" id="sair">Desconectar do Spotify</button>
+      <button class="mini" id="sair">Trocar de serviço (Spotify ou YouTube)</button>
       <button class="mini" id="trocarId">Trocar Client ID</button>
       <button class="mini" id="fecharAjustes">Voltar</button>
     </div>
@@ -316,6 +318,7 @@ async function parar() {
   $("agora").innerHTML = "<b>Nada tocando</b><span>Toque numa cena</span>";
 }
 function erro(e) {
+  if (e.message === "sem-login" && guarda.ler("semSpotify", false)) return aviso("Essa cena ainda não tem link do YouTube. Abra as configurações e troque a música dela por um link do YouTube ou do YouTube Music.");
   if (e.message === "sem-login") return mostrar(guarda.ler("clientId", ID_PADRAO) ? "telaLogin" : "telaConfig");
   if (e.message === "sem-aparelho" || e.reason === "NO_ACTIVE_DEVICE" || e.status === 404) return aviso("O Spotify não está ativo em nenhum aparelho. Abra o app do Spotify, toque qualquer música por um segundo e volte aqui.");
   if (e.reason === "PREMIUM_REQUIRED" || e.status === 403) return aviso("O Spotify recusou o comando. Controlar a reprodução exige conta Premium.");
