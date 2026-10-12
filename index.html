@@ -117,16 +117,16 @@ code{background:#0e090b;border:1px solid var(--borda);border-radius:6px;padding:
 const CORTE_PADRAO = { ini: 6, fim: 12 };
 const ID_PADRAO = "e2c8b49c706041f7a4744a9493d65728";
 const PADRAO = [
-  ["Início: a praça", "Bloodborne Omen"],
-  ["Cena: o festival", "Darkest Dungeon The Hamlet"],
-  ["Cena: a taverna", "Witcher 3 The Nightingale"],
-  ["Cena: o ritual", "Witcher 3 Ladies of the Woods"],
-  ["Santavio", "Diablo II Tristram Matt Uelmen"],
-  ["Taverna de Santavio", "Witcher 3 Whispers of Oxenfurt"],
-  ["Vinhedos da Condesa", "Bloodborne Queen of the Vilebloods"],
-  ["Acampamentos Caio", "Witcher 3 The Fields of Ard Skellig"],
-  ["Base da Spade", "Bloodborne Hunter's Dream"],
-  ["Rio Valmorria", "Dark Souls II Majula"]
+  ["Mistério", "https://www.youtube.com/watch?v=nlxIwrtxPT4"],
+  ["Horror", "https://www.youtube.com/watch?v=jM5RC5KBW4w"],
+  ["Tensão", "https://www.youtube.com/watch?v=3vjoxb1ewdo"],
+  ["Combate", "https://www.youtube.com/watch?v=Lxhvesbwz3E"],
+  ["Chefe", "https://www.youtube.com/watch?v=8LOR9JXK1Og"],
+  ["Taverna", "https://www.youtube.com/watch?v=QaY5jRkCsuo"],
+  ["Alegre", "https://www.youtube.com/watch?v=gKysbtS6xnQ"],
+  ["Estrada", "https://www.youtube.com/watch?v=VmejLxBPyFE"],
+  ["Descanso", "https://www.youtube.com/watch?v=6pCKMaBD1Bc"],
+  ["Nobreza", "https://www.youtube.com/watch?v=hlWTxD_ZyJ8"]
 ];
 const ESCOPOS = "user-modify-playback-state user-read-playback-state";
 const REDIR = location.origin + location.pathname;
@@ -136,7 +136,7 @@ const guarda = {
   gravar(k, v) { try { localStorage.setItem("trilhas." + k, JSON.stringify(v)); } catch (e) {} },
   apagar(k) { try { localStorage.removeItem("trilhas." + k); } catch (e) {} }
 };
-let cenas = guarda.ler("cenas", PADRAO);
+let cenas = guarda.ler("vibes", PADRAO);
 let tocando = -1;
 
 function aviso(msg) { const a = $("aviso"); if (!msg) { a.style.display = "none"; return; } a.textContent = msg; a.style.display = "block"; }
@@ -350,7 +350,7 @@ function listaDoTexto(t) {
 
 $("abrirAjustes").onclick = () => { $("lista").value = textoDaLista(cenas); const c = guarda.ler("corte", CORTE_PADRAO); $("corteIni").value = c.ini; $("corteFim").value = c.fim; mostrar("telaAjustes"); };
 $("fecharAjustes").onclick = () => mostrar(null);
-$("salvarLista").onclick = () => { const l = listaDoTexto($("lista").value); if (!l.length) return aviso("A lista ficou vazia."); cenas = l; guarda.gravar("cenas", cenas); tocando = -1; pintar(); aviso(""); mostrar(null); aquecer(); };
+$("salvarLista").onclick = () => { const l = listaDoTexto($("lista").value); if (!l.length) return aviso("A lista ficou vazia."); cenas = l; guarda.gravar("vibes", cenas); tocando = -1; pintar(); aviso(""); mostrar(null); aquecer(); };
 $("salvarCorte").onclick = () => { const n = (id) => Math.max(0, Math.min(120, parseInt($(id).value, 10) || 0)); guarda.gravar("corte", { ini: n("corteIni"), fim: n("corteFim") }); aviso(""); mostrar(null); };
 $("restaurar").onclick = () => { $("lista").value = textoDaLista(PADRAO); };
 $("semSpotify").onclick = () => { guarda.gravar("semSpotify", true); mostrar(null); pintar(); telaAcesa(); };
