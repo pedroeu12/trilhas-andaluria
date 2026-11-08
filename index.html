@@ -24,6 +24,9 @@ button{font:inherit;color:inherit;border:1px solid var(--borda);background:var(-
 .cena.tocando{border-color:var(--ouro);background:linear-gradient(160deg,var(--vinho-f),var(--painel));box-shadow:0 0 0 1px var(--ouro) inset}
 .cena.tocando .faixa{color:var(--texto)}
 .cena.carregando{opacity:.6}
+.grupo{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:6px 2px 2px;margin-top:6px;border:0;border-bottom:1px solid var(--borda);border-radius:0;background:none;color:var(--ouro);font-size:.8rem;letter-spacing:.1em;text-transform:uppercase;font-weight:700}
+.grupo:first-child{margin-top:0}
+.grupo i{font-style:normal;color:var(--mudo);font-size:.75rem;letter-spacing:0;text-transform:none;font-weight:400}
 #barra{position:fixed;left:0;right:0;bottom:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:rgba(18,12,15,.96);border-top:1px solid var(--borda);display:flex;align-items:center;gap:10px}
 #agora{flex:1;min-width:0}
 #agora b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.95rem}
@@ -78,10 +81,11 @@ code{background:#0e090b;border:1px solid var(--borda);border-radius:6px;padding:
   <div class="cartao">
     <h2>Cenas</h2>
     <p>Uma cena por linha, no formato <code>Nome da cena | música</code>. A música pode ser um texto de busca ou um link de faixa do Spotify, ou um link do YouTube ou do YouTube Music (nesse caso ela toca aqui mesmo, na página).</p>
+    <p>Para separar em grupos, comece uma linha com <code># Nome do grupo</code>, por exemplo <code># Sessão 04</code>. As cenas abaixo dela entram nesse grupo.</p>
     <textarea id="lista" spellcheck="false"></textarea>
     <div class="linha">
       <button class="primario" id="salvarLista">Salvar cenas</button>
-      <button class="mini" id="restaurar">Restaurar a lista da Sessão 01</button>
+      <button class="mini" id="restaurar">Restaurar a lista padrão</button>
     </div>
   </div>
   <div class="cartao">
@@ -116,6 +120,25 @@ code{background:#0e090b;border:1px solid var(--borda);border-radius:6px;padding:
 "use strict";
 const CORTE_PADRAO = { ini: 6, fim: 12 };
 const ID_PADRAO = "e2c8b49c706041f7a4744a9493d65728";
+const SESSAO_03 = [
+  ["Baile em chamas", "https://www.youtube.com/watch?v=_ZaVLICwE0E"],
+  ["Entreposto", "https://www.youtube.com/watch?v=V8Z0ouCLL7k"],
+  ["Acampamentos Caio", "https://www.youtube.com/watch?v=aKDCzj4p-pA"],
+  ["O patrono e o portal", "https://www.youtube.com/watch?v=aEqL2tZp-F8"],
+  ["A carroça lacrada", "https://www.youtube.com/watch?v=sW90d3qU2dQ"],
+  ["O pregador", "https://www.youtube.com/watch?v=sPq1njsyMWk"],
+  ["Cemitério do coveiro", "https://www.youtube.com/watch?v=DX6PaACRrhA"],
+  ["Zumbis do cemitério", "https://www.youtube.com/watch?v=YQS4o_bYA_M"],
+  ["Santavio fechada", "https://www.youtube.com/watch?v=OsLb6LGVYSY"],
+  ["Bosque a leste", "https://www.youtube.com/watch?v=fhUqu-g0pVY"],
+  ["Fungispunj", "https://www.youtube.com/watch?v=r7hCJIC_y6Q"],
+  ["Jesaña", "https://www.youtube.com/watch?v=neBAbWwWvJY"],
+  ["Esgotos de Jesaña", "https://www.youtube.com/watch?v=2HOfRTiakBg"],
+  ["Golem de Metal", "https://www.youtube.com/watch?v=d19EmtR5Ft4"],
+  ["Moonstone", "https://www.youtube.com/watch?v=pvpCX9qtyZE"],
+  ["Palácio: infiltração", "https://www.youtube.com/watch?v=_ffITc8pKTc"],
+  ["Palácio: alarme", "https://www.youtube.com/watch?v=np3g9B73n6E"]
+];
 const PADRAO = [
   ["Mistério", "https://www.youtube.com/watch?v=nlxIwrtxPT4"],
   ["Horror", "https://www.youtube.com/watch?v=jM5RC5KBW4w"],
@@ -124,10 +147,27 @@ const PADRAO = [
   ["Chefe", "https://www.youtube.com/watch?v=8LOR9JXK1Og"],
   ["Taverna", "https://www.youtube.com/watch?v=QaY5jRkCsuo"],
   ["Alegre", "https://www.youtube.com/watch?v=gKysbtS6xnQ"],
-  ["Estrada", "https://www.youtube.com/watch?v=VmejLxBPyFE"],
+  ["Estrada", "https://www.youtube.com/watch?v=UkEHW4pqCgk"],
   ["Descanso", "https://www.youtube.com/watch?v=6pCKMaBD1Bc"],
   ["Nobreza", "https://www.youtube.com/watch?v=hlWTxD_ZyJ8"]
 ];
+// nome das faixas padrão, para aparecer antes da primeira vez que tocam
+const TITULOS = {
+  _ZaVLICwE0E: "Dancer of the Boreal Valley · Dark Souls III", V8Z0ouCLL7k: "Merchants of Novigrad · The Witcher 3",
+  "aKDCzj4p-pA": "Violão flamenco", "aEqL2tZp-F8": "Lullaby for Mergo · Bloodborne", sW90d3qU2dQ: "Mournweald · Darkest Dungeon",
+  sPq1njsyMWk: "Brotherhood of the Silent Sorrow · Blasphemous", DX6PaACRrhA: "Tristram · Diablo",
+  YQS4o_bYA_M: "Silver for Monsters · The Witcher 3", OsLb6LGVYSY: "The Night of Long Fangs · The Witcher 3",
+  "fhUqu-g0pVY": "Fungal Wastes · Hollow Knight", r7hCJIC_y6Q: "Decisive Battle · Hollow Knight", neBAbWwWvJY: "Novigrad · The Witcher 3",
+  "2HOfRTiakBg": "Return to the Warrens · Darkest Dungeon", d19EmtR5Ft4: "Iudex Gundyr · Dark Souls III",
+  pvpCX9qtyZE: "Soul Sanctum · Hollow Knight", _ffITc8pKTc: "Regent Suspense · Dishonored", np3g9B73n6E: "Steel for Humans · The Witcher 3",
+  nlxIwrtxPT4: "Ladies of the Woods · The Witcher 3", jM5RC5KBW4w: "Omen · Bloodborne", "3vjoxb1ewdo": "Hunt or Be Hunted · The Witcher 3",
+  Lxhvesbwz3E: "Combat in the Ruins · Darkest Dungeon", "8LOR9JXK1Og": "Cleric Beast · Bloodborne", QaY5jRkCsuo: "Drink Up, There's More! · The Witcher 3",
+  gKysbtS6xnQ: "The Banks of the Sansretour · The Witcher 3", UkEHW4pqCgk: "The Trail · The Witcher 3", "6pCKMaBD1Bc": "Hunter's Dream · Bloodborne",
+  hlWTxD_ZyJ8: "Queen of the Vilebloods · Bloodborne"
+};
+const PADRAO_GRUPOS = [{ titulo: "Sessão 03", cenas: SESSAO_03 }, { titulo: "Vibes", cenas: PADRAO }];
+// o vídeo antigo da "Estrada" saiu do ar: troca também em listas já salvas
+const TROCAS = { "https://www.youtube.com/watch?v=VmejLxBPyFE": "https://www.youtube.com/watch?v=UkEHW4pqCgk" };
 const ESCOPOS = "user-modify-playback-state user-read-playback-state";
 const REDIR = location.origin + location.pathname;
 const $ = (id) => document.getElementById(id);
@@ -136,7 +176,14 @@ const guarda = {
   gravar(k, v) { try { localStorage.setItem("trilhas." + k, JSON.stringify(v)); } catch (e) {} },
   apagar(k) { try { localStorage.removeItem("trilhas." + k); } catch (e) {} }
 };
-let cenas = guarda.ler("vibes", PADRAO);
+function consertar(grupos) { for (const g of grupos) for (const c of g.cenas) if (TROCAS[c[1]]) c[1] = TROCAS[c[1]]; return grupos; }
+// grupos de cenas; quem já tinha as vibes salvas ganha a Sessão 03 por cima e mantém as próprias vibes
+let grupos = consertar(guarda.ler("grupos", null) || [{ titulo: "Sessão 03", cenas: SESSAO_03 }, { titulo: "Vibes", cenas: guarda.ler("vibes", PADRAO) }]);
+let cenas = [];      // lista plana de todas as cenas, na ordem da tela
+let botoes = [];     // botão de cada cena, pelo mesmo índice
+let fechados = guarda.ler("fechados", []);
+function achatar() { cenas = []; for (const g of grupos) for (const c of g.cenas) cenas.push(c); }
+achatar();
 let tocando = -1;
 
 function aviso(msg) { const a = $("aviso"); if (!msg) { a.style.display = "none"; return; } a.textContent = msg; a.style.display = "block"; }
@@ -288,7 +335,7 @@ async function tocarYt(i, vid, minha) {
 }
 async function tocar(i) {
   const [nome, musica] = cenas[i];
-  const botao = $("grade").children[i];
+  const botao = botoes[i];
   botao.classList.add("carregando"); aviso("");
   const minha = ++rodada; clearTimeout(relogio); vigiaAtual = null;
   const vid = ytDe(musica);
@@ -329,16 +376,33 @@ function erro(e) {
 
 /* ---------- interface ---------- */
 function pintar() {
-  const g = $("grade"); g.innerHTML = "";
+  const g = $("grade"); g.innerHTML = ""; botoes = [];
   const cache = guarda.ler("cache", {});
-  cenas.forEach(([nome, musica], i) => {
-    const b = document.createElement("button"); b.className = "cena" + (i === tocando ? " tocando" : "");
-    const n = document.createElement("span"); n.className = "nome"; n.textContent = nome;
-    const f = document.createElement("span"); f.className = "faixa"; f.textContent = (cache[musica] && cache[musica].titulo) || musica;
-    b.append(n, f); b.onclick = () => tocar(i); g.append(b);
-  });
+  let i = 0;
+  for (const grupo of grupos) {
+    const fechado = fechados.includes(grupo.titulo);
+    if (grupos.length > 1 || grupo.titulo) {
+      const h = document.createElement("button"); h.className = "grupo";
+      const t = document.createElement("span"); t.textContent = grupo.titulo || "Cenas";
+      const s = document.createElement("i"); s.textContent = fechado ? "mostrar (" + grupo.cenas.length + ")" : "esconder";
+      h.append(t, s);
+      h.onclick = () => { fechados = fechado ? fechados.filter((x) => x !== grupo.titulo) : fechados.concat(grupo.titulo); guarda.gravar("fechados", fechados); pintar(); };
+      g.append(h);
+    }
+    for (const [nome, musica] of grupo.cenas) {
+      const k = i++;
+      const b = document.createElement("button"); b.className = "cena" + (k === tocando ? " tocando" : "");
+      const n = document.createElement("span"); n.className = "nome"; n.textContent = nome;
+      const vid = ytDe(musica);
+      const f = document.createElement("span"); f.className = "faixa"; f.textContent = (cache[musica] && cache[musica].titulo) || (vid && TITULOS[vid]) || (vid ? "YouTube" : musica);
+      b.append(n, f); b.onclick = () => tocar(k);
+      if (fechado && k !== tocando) b.classList.add("oculto");
+      botoes[k] = b; g.append(b);
+    }
+  }
 }
 function textoDaLista(l) { return l.map(([a, b, c]) => a + " | " + b + (c ? " | " + c[0] + "-" + c[1] : "")).join("\n"); }
+function textoDosGrupos(gs) { return gs.map((g) => (g.titulo ? "# " + g.titulo + "\n" : "") + textoDaLista(g.cenas)).join("\n\n"); }
 function listaDoTexto(t) {
   return t.split("\n").map((x) => x.trim()).filter(Boolean).map((x) => {
     const p = x.split("|").map((y) => y.trim());
@@ -347,12 +411,22 @@ function listaDoTexto(t) {
     return m ? [p[0], p[1], [+m[1], +m[2]]] : [p[0], p.slice(1).join(" | ")];
   }).filter(([a, b]) => a && b);
 }
+function gruposDoTexto(t) {
+  const gs = []; let atual = null;
+  for (const linha of t.split("\n")) {
+    const m = linha.trim().match(/^#+\s*(.*)$/);
+    if (m) { atual = { titulo: m[1].trim() || "Cenas", linhas: [] }; gs.push(atual); continue; }
+    if (!atual) { atual = { titulo: "", linhas: [] }; gs.push(atual); }
+    atual.linhas.push(linha);
+  }
+  return gs.map((g) => ({ titulo: g.titulo, cenas: listaDoTexto(g.linhas.join("\n")) })).filter((g) => g.cenas.length);
+}
 
-$("abrirAjustes").onclick = () => { $("lista").value = textoDaLista(cenas); const c = guarda.ler("corte", CORTE_PADRAO); $("corteIni").value = c.ini; $("corteFim").value = c.fim; mostrar("telaAjustes"); };
+$("abrirAjustes").onclick = () => { $("lista").value = textoDosGrupos(grupos); const c = guarda.ler("corte", CORTE_PADRAO); $("corteIni").value = c.ini; $("corteFim").value = c.fim; mostrar("telaAjustes"); };
 $("fecharAjustes").onclick = () => mostrar(null);
-$("salvarLista").onclick = () => { const l = listaDoTexto($("lista").value); if (!l.length) return aviso("A lista ficou vazia."); cenas = l; guarda.gravar("vibes", cenas); tocando = -1; pintar(); aviso(""); mostrar(null); aquecer(); };
+$("salvarLista").onclick = () => { const gs = gruposDoTexto($("lista").value); if (!gs.length) return aviso("A lista ficou vazia."); grupos = gs; achatar(); guarda.gravar("grupos", grupos); tocando = -1; pintar(); aviso(""); mostrar(null); aquecer(); };
 $("salvarCorte").onclick = () => { const n = (id) => Math.max(0, Math.min(120, parseInt($(id).value, 10) || 0)); guarda.gravar("corte", { ini: n("corteIni"), fim: n("corteFim") }); aviso(""); mostrar(null); };
-$("restaurar").onclick = () => { $("lista").value = textoDaLista(PADRAO); };
+$("restaurar").onclick = () => { $("lista").value = textoDosGrupos(PADRAO_GRUPOS); };
 $("semSpotify").onclick = () => { guarda.gravar("semSpotify", true); mostrar(null); pintar(); telaAcesa(); };
 $("sair").onclick = () => { guarda.apagar("semSpotify"); guarda.apagar("token"); mostrar("telaLogin"); };
 $("trocarId").onclick = () => { guarda.apagar("token"); $("clientId").value = guarda.ler("clientId", ID_PADRAO); mostrar("telaConfig"); };
